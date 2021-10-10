@@ -1,0 +1,7 @@
+auth/auth.yml
+
+__pycache__/
+
+venv
+.vscode
+nohup.out

@@ -1,0 +1,4 @@
+---
+  # CLIENT DETAILS
+  gateio_key: "GATEIO_API_KEY"
+  gateio_secret: "GATEIO_SECRET"
