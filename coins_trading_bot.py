@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+from new_listings_scraper import get_announced_coin
 import time
 from gate_api import SpotApi, Order
 from logger import getLogger
@@ -15,6 +16,8 @@ class CoinTradingBot:
         self.spot_api_client = spot_api
         self.redis_client = redis_client
 
+        self.pairing = trade_config["TRADE_OPTIONS"]["PAIRING"]
+        self.quantity = trade_config["TRADE_OPTIONS"]["QUANTITY"]
         self.tp = trade_config["TRADE_OPTIONS"]["TP"]
         self.sl = trade_config["TRADE_OPTIONS"]["SL"]
         self.uc = trade_config["TRADE_OPTIONS"]["UC"]
@@ -57,6 +60,8 @@ class CoinTradingBot:
             coin_info = coin_info[0]
 
             last_price = coin_info.last
+
+            logger.info(f"last fetched price: {last_price}")
 
             if (
                 float(last_price)
@@ -139,70 +144,62 @@ class CoinTradingBot:
             time.sleep(0.1)
 
     def run_bot(self):
-        while True:
+        logger.info("Bot started")
+        
+        try:
+            coin_to_trade = get_announced_coin(self.redis_client)
 
-            try:
-                coin_to_trade = self.get_coin_to_trade()
+            if len(coin_to_trade) > 0:
 
-                if coin_to_trade != None:
+                symbol = coin_to_trade[0]
+                currency_pair = symbol+'_'+self.pairing
+                base_amount = self.quantity
 
-                    currency_pair = coin_to_trade["currency_pair"]
-                    base_amount = coin_to_trade["base_amount"]
-                    listing_time = float(coin_to_trade["listing_time"])
+                coin_info = self.spot_api_client.list_tickers(
+                    currency_pair=currency_pair)
 
-                    wait_time = listing_time-datetime.timestamp(datetime.now())
+                assert(len(coin_info) == 1)
 
-                    logger.info(
-                        f"Found currency pair {currency_pair}, waiting for {wait_time} seconds before placing the buy order")
+                coin_info = coin_info[0]
+                last_price = coin_info.last
 
-                    time.sleep(wait_time-10)
+                logger.info(
+                    f"Placing buy order for {currency_pair} at {datetime.timestamp(datetime.now())} with base amount {base_amount} and price {last_price}")
 
-                    coin_info = self.spot_api_client.list_tickers(
-                        currency_pair=currency_pair)
+                amount = float(base_amount) / float(last_price)
 
-                    assert(len(coin_info) == 1)
+                if self.test_mode == True:
+                    buy_order = {
+                        "amount": str(amount),
+                        "type": "limit",
+                        "side": "buy",
+                        "currency_pair": currency_pair,
+                        "price": last_price
+                    }
 
-                    coin_info = coin_info[0]
-                    last_price = coin_info.last
+                else:
+                    order = Order(amount=str(amount), type="limit", side='buy',
+                                currency_pair=currency_pair, price=last_price)
 
-                    logger.info(
-                        f"Placing buy order for {currency_pair} at {datetime.timestamp(datetime.now())} with base amount {base_amount} and price {last_price}")
+                    created_buy_order = self.spot_api_client.create_order(order)
+                    buy_order = {
+                        "amount": str(created_buy_order.amount),
+                        "type": created_buy_order.type,
+                        "side": created_buy_order.side,
+                        "currency_pair": created_buy_order.currency_pair,
+                        "price": created_buy_order.price,
+                        "create_time": created_buy_order.create_time
+                    }
 
-                    amount = float(base_amount) / float(last_price)
+                buy_order["tp"] = self.tp
+                buy_order["sl"] = self.sl
+                buy_order["uc"] = self.uc
 
-                    if self.test_mode == True:
-                        buy_order = {
-                            "amount": str(amount),
-                            "type": "limit",
-                            "side": "buy",
-                            "currency_pair": currency_pair,
-                            "price": last_price
-                        }
+                self.redis_client.hset(
+                    "buyOrders", currency_pair, json.dumps(buy_order)
+                )
 
-                    else:
-                        order = Order(amount=str(amount), type="limit", side='buy',
-                                    currency_pair=currency_pair, price=last_price)
+                self.check_and_sell(buy_order)
 
-                        created_buy_order = self.spot_api_client.create_order(order)
-                        buy_order = {
-                            "amount": str(created_buy_order.amount),
-                            "type": created_buy_order.type,
-                            "side": created_buy_order.side,
-                            "currency_pair": created_buy_order.currency_pair,
-                            "price": created_buy_order.price,
-                            "create_time": created_buy_order.create_time
-                        }
-
-                    buy_order["tp"] = self.tp
-                    buy_order["sl"] = self.sl
-                    buy_order["uc"] = self.uc
-
-                    self.redis_client.hset(
-                        "buyOrders", currency_pair, json.dumps(buy_order)
-                    )
-
-                    self.check_and_sell(buy_order)
-
-            except Exception as e:
-                print(e)
-            time.sleep(5)
+        except Exception as e:
+            logger.error(e)
