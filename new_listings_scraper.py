@@ -40,11 +40,16 @@ def get_last_coin(redis_client: redis.Redis):
 def get_announced_coin(redis_client: redis.Redis):
     iterations = 0
     while True:
-        latest_coin = get_last_coin(redis_client)
-        iterations += 1
+        try:
+            latest_coin = get_last_coin(redis_client)
+            iterations += 1
 
-        if len(latest_coin) > 0:
-            return latest_coin
+            if len(latest_coin) > 0:
+                logger.info(f"New coin(s) detected {latest_coin}")
+                return latest_coin
 
-        logger.info(f"Running {iterations}")
-        time.sleep(1)
+            logger.info(f"Running {iterations}")
+            time.sleep(3)
+        except Exception as e:
+            logger.error(f"Some error occured: {e}")
+            time.sleep(5)
