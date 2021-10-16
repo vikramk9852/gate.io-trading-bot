@@ -1,20 +1,23 @@
 from datetime import datetime
+from db.main import Database
 import json
 from new_listings_scraper import get_announced_coin
 import time
 from gate_api import SpotApi, Order
 from logger import getLogger
 import redis
+from pypika import Table, Query
 
 logger = getLogger(__name__)
 
 
 class CoinTradingBot:
-    def __init__(self, secret_config, trade_config, spot_api: SpotApi, redis_client: redis.Redis):
+    def __init__(self, secret_config, trade_config, spot_api: SpotApi, redis_client: redis.Redis, db_client: Database):
         self.secret_config = secret_config
         self.trade_config = trade_config
         self.spot_api_client = spot_api
         self.redis_client = redis_client
+        self.db_client = db_client
 
         self.pairing = trade_config["TRADE_OPTIONS"]["PAIRING"]
         self.quantity = trade_config["TRADE_OPTIONS"]["QUANTITY"]
@@ -31,14 +34,6 @@ class CoinTradingBot:
         coin = self.redis_client.get("gateio-coin-to-trade")
         if coin != None:
             coin = json.loads(coin)
-        else:
-            return None
-
-        # coin = {
-        #     "currency_pair": "MATIC_USDT",
-        #     "base_amount": "1",
-        #     "listing_time": "1633853703"
-        # }
 
         return coin
 
@@ -61,7 +56,17 @@ class CoinTradingBot:
 
             last_price = coin_info.last
 
-            logger.info(f"last fetched price: {last_price}")
+            coin_symbol_info = currency_pair.split('_')
+            insert_obj = {
+                "symbol": coin_symbol_info[0],
+                "baseCurrency": coin_symbol_info[1],
+                "price": last_price,
+                "type": "CHECK_AND_SELL",
+                "exchange": "GATEIO"
+            }
+            insert_query = self.db_client.get_insert_json_query(
+                table_name='CoinScanInfo', json_obj=insert_obj)
+            self.db_client.insert_data(insert_query)
 
             if (
                 float(last_price)
@@ -145,7 +150,7 @@ class CoinTradingBot:
 
     def run_bot(self):
         logger.info("Bot started")
-        
+
         try:
             coin_to_trade = get_announced_coin(self.redis_client)
 
@@ -179,9 +184,10 @@ class CoinTradingBot:
 
                 else:
                     order = Order(amount=str(amount), type="limit", side='buy',
-                                currency_pair=currency_pair, price=last_price)
+                                  currency_pair=currency_pair, price=last_price)
 
-                    created_buy_order = self.spot_api_client.create_order(order)
+                    created_buy_order = self.spot_api_client.create_order(
+                        order)
                     buy_order = {
                         "amount": str(created_buy_order.amount),
                         "type": created_buy_order.type,
@@ -198,6 +204,18 @@ class CoinTradingBot:
                 self.redis_client.hset(
                     "buyOrders", currency_pair, json.dumps(buy_order)
                 )
+
+                insert_obj = {
+                    "symbol": symbol,
+                    "baseCurrency": self.pairing,
+                    "price": buy_order["price"],
+                    "type": "BUY",
+                    "exchange": "GATEIO"
+                }
+                insert_query = self.db_client.get_insert_json_query(
+                    table_name='CoinScanInfo', json_obj=insert_obj)
+                self.db_client.insert_data(insert_query)
+
 
                 self.check_and_sell(buy_order)
 
