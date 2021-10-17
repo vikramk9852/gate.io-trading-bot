@@ -25,9 +25,8 @@ def add_coin():
     try:
         request_data = request.get_json()
 
-        currency_pair = request_data["currency_pair"]
-        base_amount = request_data["base_amount"]
-        listing_time = request_data["listing_time"]
+        payload = request_data["payload"]
+        exchange = request_data["exchange"]
         secret_token = request_data["secret_token"]
 
         secret_config = load_config("auth/auth.yml")
@@ -36,13 +35,11 @@ def add_coin():
         if verify_secret_token(secret_config, secret_token) == False:
             return jsonify({"data": "Invalid auth token"}), 400
 
-        redis_obj = {
-            "currency_pair": currency_pair,
-            "base_amount": base_amount,
-            "listing_time": listing_time,
-        }
+        redis_obj = payload
 
-        redis_client.set("gateio-coin-to-trade", json.dumps(redis_obj))
+        redis_key = exchange+"-coin-to-trade"
+
+        redis_client.set(redis_key, json.dumps(redis_obj))
 
         return jsonify({"status": "PASS"}), 200
     except Exception as e:
@@ -80,14 +77,14 @@ def get_chart_data():
 
         if binance_response[0] == 0:
             return jsonify(
-            {
-                "status": "PASS",
-                "data": {
-                    "binance": [],
-                    "gateio": []
+                {
+                    "status": "PASS",
+                    "data": {
+                        "binance": [],
+                        "gateio": []
+                    }
                 }
-            }
-        ), 200
+            ), 200
 
         gateio_start_time = binance_response[0][0] - 54000*1000
         gateio_start_time = int(gateio_start_time / 1000)
