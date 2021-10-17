@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 from db.main import Database
 import json
 from new_listings_scraper import get_announced_coin
@@ -38,6 +39,16 @@ class CoinTradingBot:
         return coin
 
     def check_and_sell(self, buy_order):
+        symbol = buy_order["symbol"]
+        pairing = buy_order["pairing"]
+
+        insert_obj = {
+            "symbol": symbol,
+            "baseCurrency": pairing,
+            "type": "CHECK_AND_SELL",
+            "exchange": "GATEIO",
+            "tradeId": buy_order["tradeId"]
+        }
 
         while True:
 
@@ -56,14 +67,8 @@ class CoinTradingBot:
 
             last_price = coin_info.last
 
-            coin_symbol_info = currency_pair.split('_')
-            insert_obj = {
-                "symbol": coin_symbol_info[0],
-                "baseCurrency": coin_symbol_info[1],
-                "price": last_price,
-                "type": "CHECK_AND_SELL",
-                "exchange": "GATEIO"
-            }
+            insert_obj["price"] = last_price
+
             insert_query = self.db_client.get_insert_json_query(
                 table_name='CoinScanInfo', json_obj=insert_obj)
             self.db_client.insert_data(insert_query)
@@ -91,6 +96,11 @@ class CoinTradingBot:
                 logger.info(
                     f"updated tp: {round(new_tp, 3)} and sl: {round(new_sl, 3)}"
                 )
+
+                insert_obj["type"] = "UPDAET_TP"
+                insert_query = self.db_client.get_insert_json_query(
+                    table_name='CoinScanInfo', json_obj=insert_obj)
+                self.db_client.insert_data(insert_query)
 
             elif float(last_price) < stored_price - (
                 stored_price * coin_sl / 100
@@ -141,6 +151,11 @@ class CoinTradingBot:
                         f"sold {currency_pair} at {(float(last_price) - stored_price) / float(stored_price)*100}"
                     )
 
+                    insert_obj["type"] = "SELL"
+                    insert_query = self.db_client.get_insert_json_query(
+                        table_name='CoinScanInfo', json_obj=insert_obj)
+                    self.db_client.insert_data(insert_query)
+
                     break
 
                 except Exception as e:
@@ -179,7 +194,8 @@ class CoinTradingBot:
                         "type": "limit",
                         "side": "buy",
                         "currency_pair": currency_pair,
-                        "price": last_price
+                        "price": last_price,
+                        "create_time": datetime.timestamp(datetime.now()),
                     }
 
                 else:
@@ -200,6 +216,9 @@ class CoinTradingBot:
                 buy_order["tp"] = self.tp
                 buy_order["sl"] = self.sl
                 buy_order["uc"] = self.uc
+                buy_order["symbol"] = symbol
+                buy_order["pairing"] = self.pairing
+                buy_order["tradeId"] = str(uuid.uuid4())
 
                 self.redis_client.hset(
                     "buyOrders", currency_pair, json.dumps(buy_order)
@@ -210,7 +229,8 @@ class CoinTradingBot:
                     "baseCurrency": self.pairing,
                     "price": buy_order["price"],
                     "type": "BUY",
-                    "exchange": "GATEIO"
+                    "exchange": "GATEIO",
+                    "tradeId": buy_order["tradeId"]
                 }
                 insert_query = self.db_client.get_insert_json_query(
                     table_name='CoinScanInfo', json_obj=insert_obj)

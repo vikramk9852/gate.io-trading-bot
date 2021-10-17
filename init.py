@@ -1,6 +1,8 @@
+from binance_trading_bot import BinanceTradingBot
 from db.main import Database
 from coins_trading_bot import CoinTradingBot
 from gate_api import ApiClient, Configuration, SpotApi
+from binance.client import Client
 import sys
 import redis
 from load_config import load_config
@@ -11,8 +13,14 @@ if __name__ == "__main__":
         secret_config = load_config("auth/auth.yml")
 
         config = Configuration(key=secret_config["gateio_key"],
-                            secret=secret_config["gateio_secret"])
+                               secret=secret_config["gateio_secret"])
         spot_api = SpotApi(ApiClient(config))
+
+        binance_client = Client(
+            api_key=secret_config["binance_api"],
+            api_secret=secret_config["binance_secret"],
+            tld="com",
+        )
 
         redis_client = redis.Redis()
 
@@ -27,6 +35,10 @@ if __name__ == "__main__":
             if bot_name == "coins_trading_bot":
                 bot = CoinTradingBot(
                     secret_config, trade_config, spot_api, redis_client, db_client)
+
+            elif bot_name == "binance_trading_bot":
+                bot = BinanceTradingBot(
+                    secret_config, trade_config, binance_client, redis_client, db_client)
 
             if bot is not None:
                 bot.run_bot()
