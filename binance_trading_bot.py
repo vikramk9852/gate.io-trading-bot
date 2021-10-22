@@ -41,13 +41,14 @@ class BinanceTradingBot:
     def check_and_sell(self, buy_order):
         symbol = buy_order["symbol"]
         pairing = buy_order["pairing"]
+        tradeId = buy_order["tradeId"]
 
         insert_obj = {
             "symbol": symbol,
             "baseCurrency": pairing,
             "type": "CHECK_AND_SELL",
             "exchange": "BINANCE",
-            "tradeId": buy_order["tradeId"]
+            "tradeId": tradeId
         }
 
         while True:
@@ -130,7 +131,7 @@ class BinanceTradingBot:
                             }
                         )
                         sell_order = {
-                            "amount": str(created_sell_order["price"]),
+                            "amount": str(created_sell_order["executedQty"]),
                             "type": created_sell_order["type"],
                             "side": created_sell_order["side"],
                             "currency_pair": created_sell_order["symbol"],
@@ -207,7 +208,7 @@ class BinanceTradingBot:
                     }
                 )
                 buy_order = {
-                    "amount": str(created_buy_order["price"]),
+                    "amount": str(created_buy_order["executedQty"]),
                     "type": created_buy_order["type"],
                     "side": created_buy_order["side"],
                     "currency_pair": created_buy_order["symbol"],

@@ -132,7 +132,9 @@ class CoinTradingBot:
                             "symbol": currency_pair,
                             "price": last_price,
                             "amount": amount,
-                            "time": datetime.timestamp(datetime.now()),
+                            "create_time": datetime.timestamp(datetime.now()),
+                            "type": "limit",
+                            "side": "sell"
                         }
 
                     sell_order["profit"] = float(last_price) - stored_price
