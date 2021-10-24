@@ -82,6 +82,9 @@ class DetectVolumeChange:
                         interval='10s'
                     )
 
+                    if len(coin_info) != 1:
+                        continue
+
                     coin_info = coin_info[0]
                     trade_volume = coin_info[1]
                     close_price = coin_info[2]
