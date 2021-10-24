@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import time
 import redis
 
-from logger import getLogger
+from helpers.logger import getLogger
 
 logger = getLogger(__name__)
 
