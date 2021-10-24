@@ -1,6 +1,6 @@
-from binance_trading_bot import BinanceTradingBot
+from bots.coins_trading_bot import CoinsTradingBot
+from bots.detect_volume_change import DetectVolumeChange
 from db.main import Database
-from coins_trading_bot import CoinTradingBot
 from gate_api import ApiClient, Configuration, SpotApi
 from binance.client import Client
 import sys
@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
         config = Configuration(key=secret_config["gateio_key"],
                                secret=secret_config["gateio_secret"])
-        spot_api = SpotApi(ApiClient(config))
+        gateio_spot_client = SpotApi(ApiClient(config))
 
         binance_client = Client(
             api_key=secret_config["binance_api"],
@@ -25,7 +25,6 @@ if __name__ == "__main__":
         redis_client = redis.Redis()
 
         db_client = Database(secret_config)
-        db_client.connect()
 
         if len(sys.argv) > 1:
 
@@ -33,12 +32,12 @@ if __name__ == "__main__":
             bot = None
 
             if bot_name == "coins_trading_bot":
-                bot = CoinTradingBot(
-                    secret_config, trade_config, spot_api, redis_client, db_client)
+                bot = CoinsTradingBot(
+                    secret_config, trade_config, binance_client, gateio_spot_client, redis_client, db_client)
 
-            elif bot_name == "binance_trading_bot":
-                bot = BinanceTradingBot(
-                    secret_config, trade_config, binance_client, redis_client, db_client)
+            elif bot_name == "detect_volume_change":
+                bot = DetectVolumeChange(
+                    binance_client, gateio_spot_client, db_client, redis_client, secret_config, trade_config)
 
             if bot is not None:
                 bot.run_bot()
