@@ -47,6 +47,43 @@ class DetectVolumeChange:
         if self.next_start_window < curr_time:
             self.next_start_window += self.ten_seconds
 
+    def check_volume(self, coin):
+        currency_pair = coin.baseAsset+'_'+coin.quoteAsset
+        logger.info(f"scanning {currency_pair}")
+        coin_info = self.gateio_spot_client.list_candlesticks(
+            currency_pair=currency_pair,
+            limit=1,
+            interval='10s'
+        )
+
+        if len(coin_info) != 1:
+            return
+
+        coin_info = coin_info[0]
+        trade_volume = coin_info[1]
+        close_price = coin_info[2]
+        adjusted_volume = float(trade_volume)/float(close_price)
+
+        if currency_pair not in self.coin_volumes:
+            self.coin_volumes[currency_pair] = [0, 0, 0]
+
+        self.coin_volumes[currency_pair].pop(0)
+
+        self.coin_volumes[currency_pair].append(adjusted_volume)
+
+        if adjusted_volume > max(1, self.coin_volumes[currency_pair][2]) * 1000:
+            logger.info(f"Possible new announcement detected {currency_pair}")
+            send_notification(currency_pair, self.secret_config)
+            redis_key = "GATEIO-coin-to-trade"
+            self.redis_client.set(redis_key, json.dumps(
+                [{
+                    "baseAsset": coin.baseAsset,
+                    "quoteAsset": coin.quoteAsset,
+                    "base_amount": self.quantity,
+                    "trade_type": "BUY_AND_SELL",
+                    "listing_time": datetime.timestamp(datetime.now()),
+                }]
+            ))
     def detect_volume_change(self):
         while True:
 
@@ -75,41 +112,7 @@ class DetectVolumeChange:
                     )).all()
 
                 for coin in coins_to_check:
-                    currency_pair = coin.baseAsset+'_'+coin.quoteAsset
-                    coin_info = self.gateio_spot_client.list_candlesticks(
-                        currency_pair=currency_pair,
-                        limit=1,
-                        interval='10s'
-                    )
-
-                    if len(coin_info) != 1:
-                        continue
-
-                    coin_info = coin_info[0]
-                    trade_volume = coin_info[1]
-                    close_price = coin_info[2]
-                    adjusted_volume = float(trade_volume)/float(close_price)
-
-                    if currency_pair not in self.coin_volumes:
-                        self.coin_volumes[currency_pair] = [0, 0, 0]
-
-                    self.coin_volumes[currency_pair].pop(0)
-
-                    self.coin_volumes[currency_pair].append(adjusted_volume)
-
-                    if adjusted_volume > max(1, self.coin_volumes[currency_pair][2]) * 1000:
-                        logger.info(f"Possible new announcement detected {currency_pair}")
-                        send_notification(currency_pair, self.secret_config)
-                        redis_key = "GATEIO-coin-to-trade"
-                        self.redis_client.set(redis_key, json.dumps(
-                            [{
-                                "baseAsset": coin.baseAsset,
-                                "quoteAsset": coin.quoteAsset,
-                                "base_amount": self.quantity,
-                                "trade_type": "BUY_AND_SELL",
-                                "listing_time": datetime.timestamp(datetime.now()),
-                            }]
-                        ))
+                    threading.Thread(target=self.check_volume, args=(coin, )).start()
 
             else:
                 wait_time = self.next_start_window - curr_time
