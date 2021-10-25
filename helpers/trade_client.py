@@ -98,3 +98,28 @@ def get_coin_symbol(baseAsset, quoteAsset, exchange):
         return baseAsset+'_'+quoteAsset
     else:
         return None
+
+
+def get_trading_value(
+    baseAsset,
+    quoteAsset,
+    exchange,
+    binance_client: Client,
+    gateio_spot_client: SpotApi
+):
+    symbol = get_coin_symbol(baseAsset, quoteAsset, exchange)
+    curr_time = datetime.timestamp(datetime.now())
+
+    trading_value = 0
+    if exchange == 'GATEIO':
+        trade_info = gateio_spot_client.list_trades(currency_pair=symbol)
+        for trade in trade_info:
+            if trade.side == 'buy' and float(trade.create_time) >= curr_time-10:
+                trading_value += (float(trade.amount) * float(trade.price))
+    elif exchange == 'BINANCE':
+        trade_info = binance_client.get_recent_trades(symbol=symbol)
+        for trade in trade_info:
+            if float(trade['time']) >= ((curr_time-10)*1000):
+                trading_value += (float(trade['qty']) * float(trade['price']))
+
+    return trading_value
