@@ -9,8 +9,9 @@ def get_last_price(symbol, exchange, binance_client: Client, gateio_spot_client:
     last_price = 0
 
     if exchange == 'BINANCE':
-        last_price = binance_client.get_symbol_ticker(
+        coin_info = binance_client.get_symbol_ticker(
             symbol=symbol)
+        last_price = coin_info['price']
     elif exchange == 'GATEIO':
         coin_info = gateio_spot_client.list_tickers(
             currency_pair=symbol)
