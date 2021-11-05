@@ -52,7 +52,7 @@ def add_coin():
 def get_chart_data():
     try:
         binance_url = "https://api.binance.com/api/v3/klines"
-        gateio_url = "https://api.gateio.ws/api/v4/spot/candlesticks"
+        gateio_url = "https://www.gate.io/json_svr/query"
 
         curr_timestamp = time.time()
         curr_timestamp *= 1000
@@ -93,14 +93,19 @@ def get_chart_data():
         gateio_end_time = int(gateio_end_time / 1000)
 
         gateio_params = {
-            "currency_pair": base_currency+'_'+pairing_currency,
-            "interval": "1m",
+            "u": 10,
+            "c": 9025990,
+            "type": "tvkline",
+            "symbol": base_currency+'_'+pairing_currency,
+            "interval": 60,
             "from": gateio_start_time,
             "to": gateio_end_time,
         }
 
-        req = requests.get(url=gateio_url, params=gateio_params)
-        gateio_response = req.json()
+        response = requests.get(url=gateio_url, params=gateio_params)
+        response = response.content.decode('ascii')
+        response = response.split('\n')[1:]
+        gateio_response = [item.split(',') for item in response]
 
         return jsonify(
             {

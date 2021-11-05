@@ -8,7 +8,7 @@ import time
 logger = getLogger(__name__)
 
 
-class NewAnnouncementBot:
+class GateioVotingAnnouncementBot:
     def __init__(self, redis_client: redis.Redis, secret_config):
         self.secret_config = secret_config
         self.redis_client = redis_client

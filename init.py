@@ -1,4 +1,5 @@
-from bots.new_announcement_scraper import NewAnnouncementBot
+from bots.binance_announcement_scrapper import BinanceAnnouncementBot
+from bots.gateio_voting_scraper import GateioVotingAnnouncementBot
 from bots.coins_trading_bot import CoinsTradingBot
 from bots.detect_volume_change import DetectVolumeChange
 from db.main import Database
@@ -40,10 +41,12 @@ if __name__ == "__main__":
                 bot = DetectVolumeChange(
                     binance_client, gateio_spot_client, db_client, redis_client, secret_config, trade_config)
 
-            elif bot_name == "new_announcement_scraper":
-                bot = NewAnnouncementBot(
+            elif bot_name == "gateio_voting_scraper":
+                bot = GateioVotingAnnouncementBot(
                     redis_client, secret_config
                 )
+            elif bot_name == "binance_announcement_scrapper":
+                bot = BinanceAnnouncementBot(redis_client, trade_config)
             if bot is not None:
                 bot.run_bot()
             else:
