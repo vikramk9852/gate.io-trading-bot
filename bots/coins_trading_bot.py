@@ -1,4 +1,5 @@
 from datetime import datetime
+from helpers.send_notification import send_notification
 from helpers.trade_client import create_order, get_coin_symbol, get_last_price
 from db.models import CoinScanInfo
 from db.main import Database
@@ -9,6 +10,7 @@ from helpers.logger import getLogger
 import redis
 from gate_api import SpotApi
 import threading
+import concurrent.futures
 
 logger = getLogger(__name__)
 
@@ -251,11 +253,17 @@ class CoinsTradingBot:
                     coins_to_trade = self.get_coins_to_trade(exchange)
 
                     if coins_to_trade != None:
-                        for coin in coins_to_trade:
-                            threading.Thread(
-                                target=self.wait_and_trade,
-                                args=(coin, exchange, ),
-                            ).start()
+
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                            for coin in coins_to_trade:
+                                coin_info = {
+                                    "baseAsset": coin,
+                                    "quoteAsset": "USDT",
+                                    "base_amount": self.quantity,
+                                }
+
+                                executor.submit(self.buy_and_sell, coin_info, exchange)
+                            executor.submit(send_notification, coins_to_trade, self.secret_config)
 
             except Exception as e:
                 print(e)
