@@ -1,3 +1,4 @@
+from bots.price_tracker import PriceTracker
 from bots.binance_announcement_scrapper import BinanceAnnouncementBot
 from bots.gateio_voting_scraper import GateioVotingAnnouncementBot
 from bots.coins_trading_bot import CoinsTradingBot
@@ -47,6 +48,11 @@ if __name__ == "__main__":
                 )
             elif bot_name == "binance_announcement_scrapper":
                 bot = BinanceAnnouncementBot(redis_client, trade_config)
+
+            elif bot_name == "price_tracker":
+                bot = PriceTracker(secret_config, trade_config, binance_client,
+                                   gateio_spot_client, redis_client, db_client)
+
             if bot is not None:
                 bot.run_bot()
             else:
