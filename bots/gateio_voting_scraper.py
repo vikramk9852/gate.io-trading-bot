@@ -4,6 +4,7 @@ from helpers.logger import getLogger
 import requests
 from bs4 import BeautifulSoup
 import time
+import json
 
 logger = getLogger(__name__)
 
@@ -14,21 +15,41 @@ class GateioVotingAnnouncementBot:
         self.redis_client = redis_client
 
     def get_last_coin(self):
-        URL = "https://www.gate.io/poll"
-        page = requests.get(URL)
+        URL = "https://www.gate.io"
+        page = requests.get(URL+'/poll')
 
         soup = BeautifulSoup(page.content, "html.parser")
-        soup = soup.find(id="pollListUl")
 
-        children = soup.find_all("a", href=True)
+        poll_list = soup.find(id="pollListUl")
+        href = poll_list.find_all("a", href=True)
+        redis_key = href[0]["href"]
+
+        project_row = soup.find_all("div", {"class": "project-row"})[0]
+
+        children = project_row.find("div")
+        curr_announcement = children.contents[0]
+
         last_announcement = self.redis_client.get(
             'gateio-voting-announcement')
-        curr_announcement = children[0]['href']
 
-        if last_announcement == None or last_announcement.decode('ascii') != curr_announcement:
+        if last_announcement == None or last_announcement.decode('ascii') != redis_key:
             send_notification(last_announcement, self.secret_config)
             self.redis_client.set(
-            'gateio-voting-announcement', curr_announcement)
+                'gateio-voting-announcement', redis_key)
+
+            str_len = len(curr_announcement)
+            symbol = ''
+
+            for index in range(str_len):
+                if ord(curr_announcement[index]) == 65288:
+                    while index < str_len and ord(curr_announcement[index+1]) != 65289:
+                        index += 1
+                        symbol += curr_announcement[index]
+
+            if symbol != '':
+                self.redis_client.set(
+                    'GATEIO-coin-to-track', json.dumps(['UFO'])
+                )
 
     def run_bot(self):
         iterations = 0

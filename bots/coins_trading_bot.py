@@ -9,7 +9,6 @@ from binance.client import Client
 from helpers.logger import getLogger
 import redis
 from gate_api import SpotApi
-import threading
 import concurrent.futures
 
 logger = getLogger(__name__)
