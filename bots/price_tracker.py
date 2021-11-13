@@ -46,12 +46,15 @@ class PriceTracker:
         return coin
 
     def track_price(self, coin, exchange):
+        logger.info("Starting price tracking for {coin}")
+        iterations = 0
+
         while True:
             coin_symbol = get_coin_symbol(coin, self.pairing, exchange)
             last_price = get_last_price(
                 coin_symbol, exchange, self.binance_client, self.gateio_spot_client)
 
-            if last_price != None:
+            if last_price != None and last_price != '0':
                 insert_row = CoinScanInfo(
                     baseAsset=coin,
                     quoteAsset=self.pairing,
@@ -64,6 +67,10 @@ class PriceTracker:
                 db_session = self.db_client.session()
                 db_session.add(insert_row)
                 db_session.commit()
+
+                iterations += 1
+                if iterations >= 100:
+                    break
             
             time.sleep(3)
 
