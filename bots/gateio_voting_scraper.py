@@ -32,8 +32,7 @@ class GateioVotingAnnouncementBot:
         last_announcement = self.redis_client.get(
             'gateio-voting-announcement')
 
-        if last_announcement == None or last_announcement.decode('ascii') != redis_key:
-            send_notification(curr_announcement, self.secret_config)
+        if last_announcement == None or last_announcement != redis_key:
             self.redis_client.set(
                 'gateio-voting-announcement', redis_key)
 
@@ -47,6 +46,10 @@ class GateioVotingAnnouncementBot:
                         symbol += curr_announcement[index]
 
             if symbol != '':
+                logger.info(f"New announcement detected {symbol}")
+                
+                send_notification(symbol, self.secret_config)
+                
                 self.redis_client.set(
                     'GATEIO-coin-to-track', json.dumps(symbol)
                 )

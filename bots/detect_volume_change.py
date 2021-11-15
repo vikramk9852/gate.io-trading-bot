@@ -10,8 +10,9 @@ from db.main import Database
 from gate_api import SpotApi
 import redis
 from binance.client import Client
-from sqlalchemy import and_
 from datetime import datetime
+import aiohttp
+import asyncio
 import concurrent.futures
 
 logger = getLogger(__name__)
@@ -34,34 +35,53 @@ class DetectVolumeChange:
         self.secret_config = secret_config
 
         self.quantity = trade_config["TRADE_OPTIONS"]["QUANTITY"]
+        self.multiplier = trade_config["TRADE_OPTIONS"]["MULTIPLIER"]
+        self.avg_size = trade_config["TRADE_OPTIONS"]["AVG_SIZE"]
 
         self.coin_trade_values = {}
+        self.iterations = {}
 
-    def check_volume(self, coin):
+    async def check_volume(self, coin, session):
         try:
             baseAsset = coin.baseAsset
             quoteAsset = coin.quoteAsset
             currency_pair = baseAsset+'_'+quoteAsset
-            # logger.info(f"scanning {currency_pair}")
+            logger.info(f"scanning {currency_pair}")
 
-            trade_value = get_trading_value(
+            trade_value = await get_trading_value(
+                session=session,
                 baseAsset=baseAsset,
                 quoteAsset=quoteAsset,
                 exchange='GATEIO',
-                gateio_spot_client=self.gateio_spot_client,
-                binance_client=None
+                redis_client=self.redis_client,
             )
 
             if currency_pair not in self.coin_trade_values:
-                self.coin_trade_values[currency_pair] = [0, trade_value+1]
+                self.coin_trade_values[currency_pair] = [0] * self.avg_size
+                self.iterations[currency_pair] = 0
 
             self.coin_trade_values[currency_pair].pop(0)
 
             self.coin_trade_values[currency_pair].append(trade_value)
 
-            if trade_value > max(1, self.coin_trade_values[currency_pair][0]) * 100:
+            self.iterations[currency_pair] += 1
+
+            avg_trading_value = sum(
+                self.coin_trade_values[currency_pair][:-1]) / (self.avg_size-1)
+
+            if self.iterations[currency_pair] >= 10 \
+                    and avg_trading_value > self.coin_trade_values[currency_pair][-1] * self.multiplier:
                 logger.info(
-                    f"Possible new announcement detected {currency_pair}")
+                    f"Large deviation detected {currency_pair}")
+
+                self.redis_client.hset('large_deviation', currency_pair, json.dumps(
+                    [{
+                        "currency_pair": currency_pair,
+                        "coin_trade_values": self.coin_trade_values[currency_pair],
+                        "multiplier": self.multiplier,
+                    }]
+                ))
+
                 redis_key = "GATEIO-coin-to-trade"
                 self.redis_client.set(redis_key, json.dumps(
                     [{
@@ -72,28 +92,31 @@ class DetectVolumeChange:
                         "listing_time": datetime.timestamp(datetime.now()),
                     }]
                 ))
-                send_notification(currency_pair, self.secret_config)
+
+                # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                #     executor.submit(send_notification, currency_pair, self.secret_config)
+
         except Exception as e:
             logger.error(f"some error occured {e}")
 
-    def detect_volume_change(self):
+    async def detect_volume_change(self):
         while True:
 
             db_session = self.db_client.session()
             coins_to_check = db_session.query(ListedCoins)\
-                .filter(and_(
-                    ListedCoins.exchange == 'GATEIO',
-                    ListedCoins.symbol.notin_(
-                        db_session.query(ListedCoins.symbol)
-                        .filter(ListedCoins.exchange == 'BINANCE')
-                    )
-                )).all()
+                .filter(ListedCoins.exchange == 'GATEIO').all()
+
             s = time.perf_counter()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+            tasks = []
+
+            async with aiohttp.ClientSession() as session:
                 for coin in coins_to_check:
-                    executor.submit(self.check_volume, coin)
-            elapsed = time.perf_counter() - s
-            logger.info(f"elapsed time: {elapsed}")
+                    tasks.append(self.check_volume(coin, session))
+                    break
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+                elapsed = time.perf_counter() - s
+                logger.info(f"elapsed time: {elapsed}")
 
     def run_bot(self):
         threading.Thread(
@@ -101,4 +124,4 @@ class DetectVolumeChange:
             args=(self.binance_client, self.gateio_spot_client, self.db_client,),
         ).start()
 
-        threading.Thread(target=self.detect_volume_change, args=()).start()
+        asyncio.run(self.detect_volume_change())

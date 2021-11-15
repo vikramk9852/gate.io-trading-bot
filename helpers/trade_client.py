@@ -2,6 +2,10 @@ from gate_api import SpotApi, Order
 from binance.client import Client
 import uuid
 from datetime import datetime
+from helpers.logger import getLogger
+import redis
+
+logger = getLogger(__name__)
 
 
 def get_last_price(symbol, exchange, binance_client: Client, gateio_spot_client: SpotApi):
@@ -106,26 +110,50 @@ def get_coin_symbol(baseAsset, quoteAsset, exchange):
         return None
 
 
-def get_trading_value(
+async def get_trading_value(
+    session,
     baseAsset,
     quoteAsset,
     exchange,
-    binance_client: Client,
-    gateio_spot_client: SpotApi
+    redis_client: redis.Redis
 ):
-    symbol = get_coin_symbol(baseAsset, quoteAsset, exchange)
-    curr_time = datetime.timestamp(datetime.now())
+    try:
+        symbol = get_coin_symbol(baseAsset, quoteAsset, exchange)
 
-    trading_value = 0
-    if exchange == 'GATEIO':
-        trade_info = gateio_spot_client.list_trades(currency_pair=symbol)
-        for trade in trade_info:
-            if trade.side == 'buy' and float(trade.create_time) >= curr_time-10:
-                trading_value += (float(trade.amount) * float(trade.price))
-    elif exchange == 'BINANCE':
-        trade_info = binance_client.get_recent_trades(symbol=symbol)
-        for trade in trade_info:
-            if float(trade['time']) >= ((curr_time-10)*1000):
-                trading_value += (float(trade['qty']) * float(trade['price']))
+        trading_value = 0
+        if exchange == 'GATEIO':
+            host = "https://api.gateio.ws"
+            prefix = "/api/v4"
+            headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
 
-    return trading_value
+            url = "/spot/trades"
+            query_param = {
+                "currency_pair": symbol,
+            }
+
+            last_id = redis_client.hget('trade_value_last_id', symbol)
+            if last_id != None:
+                query_param['last_id'] = last_id
+            else:
+                query_param['limit'] = 10
+
+            resp = await session.request('GET', url=host + prefix + url, params=query_param, headers=headers)
+            trade_info = await resp.json()
+
+            for trade in trade_info:
+                if trade['side'] == 'buy':
+                    trading_value += (float(trade['amount']) * float(trade['price']))
+                    
+                    if last_id == None or int(last_id) < int(trade['id']):
+                        last_id = trade['id']
+            
+            if last_id != None:
+                redis_client.hset('trade_value_last_id', symbol, last_id)
+
+        elif exchange == 'BINANCE':
+            pass # TO DO
+
+        return trading_value
+    except Exception as e:
+        logger.error(f"Some error occured {e}")
+        return 0
