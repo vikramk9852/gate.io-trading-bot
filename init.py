@@ -25,7 +25,7 @@ if __name__ == "__main__":
             tld="com",
         )
 
-        redis_client = redis.Redis()
+        redis_client = redis.StrictRedis(charset="utf-8", decode_responses=True)
 
         db_client = Database(secret_config)
 

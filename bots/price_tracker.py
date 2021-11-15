@@ -46,7 +46,7 @@ class PriceTracker:
         return coin
 
     def track_price(self, coin, exchange):
-        logger.info("Starting price tracking for {coin}")
+        logger.info(f"Starting price tracking for {coin}")
         iterations = 0
 
         while True:

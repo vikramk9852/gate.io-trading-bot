@@ -69,7 +69,7 @@ class BinanceAnnouncementBot:
         else:
             binance_last_announcement = self.redis_client.get(
                 'binance_last_announcement')
-            if binance_last_announcement == None or binance_last_announcement.decode('ascii') != latest_announcement:
+            if binance_last_announcement == None or binance_last_announcement != latest_announcement:
                 logger.info(
                     f"latest announcement from binance {latest_announcement}")
                 self.redis_client.set('binance_last_announcement', latest_announcement)
