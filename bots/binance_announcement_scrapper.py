@@ -48,7 +48,7 @@ class BinanceAnnouncementBot:
             latest_announcement = requests.get(URL)
         
         latest_announcement = latest_announcement.json()
-        latest_announcement = latest_announcement['data']['catalogs'][0]['articles'][1]['title']
+        latest_announcement = latest_announcement['data']['catalogs'][0]['articles'][0]['title']
         symbols = []
 
         if 'Binance Will List'.lower() in latest_announcement.lower():
