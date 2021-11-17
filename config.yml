@@ -11,5 +11,5 @@
     TTP: 1
     UC: 20
     ROTATE_IP: False
-    MULTIPLIER: 100
-    AVG_SIZE: 10
+    MULTIPLIER: 5000
+    AVG_SIZE: 100

@@ -46,7 +46,6 @@ class DetectVolumeChange:
             baseAsset = coin.baseAsset
             quoteAsset = coin.quoteAsset
             currency_pair = baseAsset+'_'+quoteAsset
-            logger.info(f"scanning {currency_pair}")
 
             trade_value = await get_trading_value(
                 session=session,
@@ -66,11 +65,14 @@ class DetectVolumeChange:
 
             self.iterations[currency_pair] += 1
 
-            avg_trading_value = sum(
-                self.coin_trade_values[currency_pair][:-1]) / (self.avg_size-1)
+            prev_avg_trading_value = sum(
+                self.coin_trade_values[currency_pair][:-3]) / (self.avg_size-3)
+            
+            curr_avg_trading_value = sum(
+                self.coin_trade_values[currency_pair][-3:]) / 3
 
-            if self.iterations[currency_pair] >= 10 \
-                    and avg_trading_value > self.coin_trade_values[currency_pair][-1] * self.multiplier:
+            if self.iterations[currency_pair] >= self.avg_size \
+                    and max(10, prev_avg_trading_value) * self.multiplier < curr_avg_trading_value:
                 logger.info(
                     f"Large deviation detected {currency_pair}")
 
