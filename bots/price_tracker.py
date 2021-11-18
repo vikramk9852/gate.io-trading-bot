@@ -50,6 +50,7 @@ class PriceTracker:
         iterations = 0
 
         while True:
+            default_symbol = coin+self.pairing
             coin_symbol = get_coin_symbol(coin, self.pairing, exchange)
             last_price = get_last_price(
                 coin_symbol, exchange, self.binance_client, self.gateio_spot_client)
@@ -58,7 +59,7 @@ class PriceTracker:
                 insert_row = CoinScanInfo(
                     baseAsset=coin,
                     quoteAsset=self.pairing,
-                    symbol=coin_symbol,
+                    symbol=default_symbol,
                     price=last_price,
                     exchange=exchange,
                     type="TRACK_PRICE",
@@ -77,14 +78,15 @@ class PriceTracker:
     def run_bot(self):
         logger.info("Bot started...")
 
-        while True:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            while True:
+                logger.info("Bot Running...")
 
-            for exchange in exchanges:
-                coins_to_track = self.get_coins_to_track(exchange)
+                for exchange in exchanges:
+                    coins_to_track = self.get_coins_to_track(exchange)
 
-                if coins_to_track != None:
+                    if coins_to_track != None:
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                        for coin in coins_to_track:
-                            executor.submit(self.track_price, coin, exchange)
-            time.sleep(5)
+                            for coin in coins_to_track:
+                                executor.submit(self.track_price, coin, exchange)
+                time.sleep(5)
