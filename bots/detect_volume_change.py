@@ -1,8 +1,8 @@
-from helpers.trade_client import get_trading_value
+from helpers.trade_client import get_coin_symbol, get_trading_value
 from helpers.update_stored_coins import update_stored_coins
 import json
 from helpers.send_notification import send_notification
-from db.models import ListedCoins
+from db.models import CoinScanInfo, ListedCoins
 from helpers.logger import getLogger
 import time
 import threading
@@ -45,13 +45,15 @@ class DetectVolumeChange:
         try:
             baseAsset = coin.baseAsset
             quoteAsset = coin.quoteAsset
-            currency_pair = baseAsset+'_'+quoteAsset
+            default_symbol = baseAsset+quoteAsset
+            exchange = 'GATEIO'
+            currency_pair = get_coin_symbol(baseAsset, quoteAsset, exchange)
 
             trade_value = await get_trading_value(
                 session=session,
                 baseAsset=baseAsset,
                 quoteAsset=quoteAsset,
-                exchange='GATEIO',
+                exchange=exchange,
                 redis_client=self.redis_client,
             )
 
@@ -67,36 +69,72 @@ class DetectVolumeChange:
 
             prev_avg_trading_value = sum(
                 self.coin_trade_values[currency_pair][:-3]) / (self.avg_size-3)
-            
+
             curr_avg_trading_value = sum(
                 self.coin_trade_values[currency_pair][-3:]) / 3
 
-            if self.iterations[currency_pair] >= self.avg_size \
-                    and max(10, prev_avg_trading_value) * self.multiplier < curr_avg_trading_value:
-                logger.info(
-                    f"Large deviation detected {currency_pair}")
+            if self.iterations[currency_pair] >= self.avg_size:
 
-                self.redis_client.hset('large_deviation', currency_pair, json.dumps(
-                    [{
-                        "currency_pair": currency_pair,
-                        "coin_trade_values": self.coin_trade_values[currency_pair],
-                        "multiplier": self.multiplier,
-                    }]
-                ))
+                if prev_avg_trading_value > 0:
 
-                redis_key = "GATEIO-coin-to-trade"
-                self.redis_client.set(redis_key, json.dumps(
-                    [{
-                        "baseAsset": baseAsset,
-                        "quoteAsset": quoteAsset,
-                        "base_amount": self.quantity,
-                        "trade_type": "BUY_AND_SELL",
-                        "listing_time": datetime.timestamp(datetime.now()),
-                    }]
-                ))
+                    largest_deviation_till_now = self.redis_client.get(
+                        'largest_deviation_till_now'
+                    )
+                    if largest_deviation_till_now == None:
+                        largest_deviation_till_now = 0
+                    else:
+                        largest_deviation_till_now = float(
+                            largest_deviation_till_now)
 
-                # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                #     executor.submit(send_notification, currency_pair, self.secret_config)
+                    curr_deviation = curr_avg_trading_value / prev_avg_trading_value
+
+                    if curr_deviation > 1 and curr_deviation > largest_deviation_till_now + 1:
+                        self.redis_client.set(
+                            'largest_deviation_till_now', curr_deviation
+                        )
+
+                        insert_row = CoinScanInfo(
+                            baseAsset=baseAsset,
+                            quoteAsset=quoteAsset,
+                            symbol=default_symbol,
+                            price=curr_deviation,
+                            exchange=exchange,
+                            type="TRACK_LARGEST_DEVIATION",
+                        )
+
+                        db_session = self.db_client.session()
+                        db_session.add(insert_row)
+                        db_session.commit()
+
+                if max(10, prev_avg_trading_value) * self.multiplier < curr_avg_trading_value:
+                    logger.info(
+                        f"Large deviation detected {currency_pair}")
+
+                    self.redis_client.hset('large_deviation', currency_pair, json.dumps(
+                        [{
+                            "currency_pair": currency_pair,
+                            "coin_trade_values": self.coin_trade_values[currency_pair],
+                            "multiplier": self.multiplier,
+                        }]
+                    ))
+
+                    redis_key = "GATEIO-coin-to-trade"
+                    self.redis_client.set(redis_key, json.dumps(
+                        [{
+                            "baseAsset": baseAsset,
+                            "quoteAsset": quoteAsset,
+                            "base_amount": self.quantity,
+                            "trade_type": "BUY_AND_SELL",
+                            "listing_time": datetime.timestamp(datetime.now()),
+                        }]
+                    ))
+
+                    self.redis_client.set(
+                        'largest_deviation_till_now', 0
+                    )
+
+                    # with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    #     executor.submit(send_notification, currency_pair, self.secret_config)
 
         except Exception as e:
             logger.error(f"some error occured {e}")
@@ -114,7 +152,7 @@ class DetectVolumeChange:
             async with aiohttp.ClientSession() as session:
                 for coin in coins_to_check:
                     tasks.append(self.check_volume(coin, session))
-                    break
+
                 await asyncio.gather(*tasks, return_exceptions=True)
 
                 elapsed = time.perf_counter() - s
