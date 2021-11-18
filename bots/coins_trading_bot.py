@@ -244,16 +244,17 @@ class CoinsTradingBot:
     def run_bot(self):
         logger.info("Bot started...")
 
-        while True:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
 
-            try:
-                exchanges = ['BINANCE', 'GATEIO']
-                for exchange in exchanges:
-                    coins_to_trade = self.get_coins_to_trade(exchange)
+            while True:
 
-                    if coins_to_trade != None:
+                try:
+                    exchanges = ['BINANCE', 'GATEIO']
+                    for exchange in exchanges:
+                        coins_to_trade = self.get_coins_to_trade(exchange)
 
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                        if coins_to_trade != None:
+
                             for coin in coins_to_trade:
                                 coin_info = {
                                     "baseAsset": coin,
@@ -262,8 +263,8 @@ class CoinsTradingBot:
                                 }
 
                                 executor.submit(self.buy_and_sell, coin_info, exchange)
-                            executor.submit(send_notification, coins_to_trade, self.secret_config)
+                            # executor.submit(send_notification, coins_to_trade, self.secret_config)
 
-            except Exception as e:
-                print(e)
-            time.sleep(1)
+                except Exception as e:
+                    print(e)
+                time.sleep(1)
